@@ -18,6 +18,27 @@
             gap: 10px;
         }
 
+        form {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        input[type="email"] {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            width: 250px;
+        }
+
+        button[type="submit"] {
+            padding: 8px 12px;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
         table {
             width: 80%;
             margin: 30px auto;
@@ -62,18 +83,24 @@
             color: white;
         }
 
-        .btn-delete {
-            background-color: #6c757d;
-            color: white;
-        }
-
         .btn-add:hover { background-color: #218838; }
         .btn-remove:hover { background-color: #c82333; }
-        .btn-delete:hover { background-color: #5a6268; }
     </style>
 </head>
 <body>
     <h1>📦 Controle de Estoque</h1>
+
+    <form method="POST" action="/registrar-email">
+        <label for="email">Cadastrar e-mail para alertas:</label>
+        <input type="email" name="email" required placeholder="seu@email.com">
+        <button type="submit">Cadastrar</button>
+    </form>
+
+    <form method="POST" action="/remover-email">
+        <label for="email">Remover e-mail dos alertas:</label>
+        <input type="email" name="email" required placeholder="seu@email.com">
+        <button type="submit">Remover</button>
+    </form>
 
     <table>
         <thead>
@@ -89,27 +116,31 @@
 
     <script>
         async function carregarItens() {
-            const response = await fetch('/itens');
-            const itens = await response.json();
+            try {
+                const response = await fetch('/itens');
+                const itens = await response.json();
 
-            const tabela = document.getElementById('tabela-itens');
-            tabela.innerHTML = '';
+                const tabela = document.getElementById('tabela-itens');
+                tabela.innerHTML = '';
 
-            itens.forEach(item => {
-                const linha = document.createElement('tr');
-                if (item.quantidade <= item.limite_alerta) linha.classList.add('alerta');
+                itens.forEach(item => {
+                    const linha = document.createElement('tr');
+                    if (item.quantidade <= item.limite_alerta) linha.classList.add('alerta');
 
-                linha.innerHTML = `
-                    <td>${item.item}</td>
-                    <td>${item.quantidade}</td>
-                    <td>${item.limite_alerta}</td>
-                    <td>                       
-                        <button class="btn-add" onclick="atualizarQuantidade('${item.item}', 1)">+</button>
-                        <button class="btn-delete" onclick="deletarItem('${item.item}')">Deletar</button>
-                    </td>
-                `;
-                tabela.appendChild(linha);
-            });
+                    linha.innerHTML = `
+                        <td>${item.item}</td>
+                        <td>${item.quantidade}</td>
+                        <td>${item.limite_alerta}</td>
+                        <td>
+                            <button class="btn-remove" onclick="atualizarQuantidade('${item.item}', -1)">−</button>
+                            <button class="btn-add" onclick="atualizarQuantidade('${item.item}', 1)">+</button>
+                        </td>
+                    `;
+                    tabela.appendChild(linha);
+                });
+            } catch (error) {
+                console.error("Erro ao carregar itens:", error);
+            }
         }
 
         async function atualizarQuantidade(nome, delta) {
@@ -121,16 +152,7 @@
             carregarItens();
         }
 
-        async function deletarItem(nome) {
-            await fetch('/deletar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ item: nome })
-            });
-            carregarItens();
-        }
-
-        carregarItens();
+        window.onload = carregarItens;
     </script>
 </body>
 </html>
