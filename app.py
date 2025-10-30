@@ -104,13 +104,13 @@ def atualizar_quantidade():
 
     return jsonify({"mensagem": "Quantidade atualizada"})
 
-@app.route("/deletar", methods=["POST"])
-def deletar():
-    dados = request.get_json()
-    nome = dados.get("item")
-
-    supabase.table("estoque").delete().eq("item", nome).execute()
-    return jsonify({"mensagem": "Item deletado com sucesso!"})
+#@app.route("/deletar", methods=["POST"])
+#def deletar():
+#    dados = request.get_json()
+#    nome = dados.get("item")
+#
+#    supabase.table("estoque").delete().eq("item", nome).execute()
+#    return jsonify({"mensagem": "Item deletado com sucesso!"})
 
 if __name__ == "__main__":
     # Define host com base no ambiente: Docker (production) ou local (development)
