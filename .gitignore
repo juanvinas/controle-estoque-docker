@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+# Logs e backups
+*.log
+*.txt
+
+# Versões antigas / testes
+app_ok*.py
+app3.py
+index2.html
+index3.html
+Dockefile

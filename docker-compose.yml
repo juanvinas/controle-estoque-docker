@@ -1,0 +1,12 @@
+version: '3.9'
+
+services:
+  estoque-app:
+    build: .
+    container_name: estoque_flask
+    ports:
+      - "8080:5000"   # roda no host 8080, dentro do container 5000
+    env_file:
+      - .env
+    restart: always
+ 
