@@ -1,54 +1,75 @@
-from flask import Flask, request, jsonify, render_template 
+from flask import Flask, request, jsonify, render_template, redirect, url_for
 from supabase import create_client
 from flask_cors import CORS
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # --- CONFIGURAÇÕES INICIAIS ---
 app = Flask(__name__)
 CORS(app)
 
 # 🔐 CONFIGURAÇÃO DO SUPABASE
-url = "https://twxhlhmaoojypxaazfkj.supabase.co"
-key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR3eGhsaG1hb29qeXB4YWF6ZmtqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTkyMDk1MiwiZXhwIjoyMDc1NDk2OTUyfQ.oIvjfGy7yYwZYgJXrRHolkCBxs8VWv7fSLe8PZmmsOI"
+url = os.getenv("SUPABASE_URL")
+key = os.getenv("SUPABASE_KEY")
 supabase = create_client(url, key)
 
 # 📧 CONFIGURAÇÃO DO GMAIL
-EMAIL_REMETENTE = "juansuportaws@gmail.com"
-SENHA_EMAIL = "zuwu ndnd qvar ldae"
-EMAIL_DESTINATARIO = "jpablonunesvinas@gmail.com"
+EMAIL_REMETENTE = os.getenv("EMAIL_REMETENTE")
+SENHA_EMAIL = os.getenv("SENHA_EMAIL")
+
+# Lista de e-mails cadastrados via interface
+emails_cadastrados = []
 
 # --- FUNÇÃO PARA ENVIAR ALERTA POR EMAIL ---
 def enviar_email_alerta(nome_item, quantidade, limite):
-    try:
-        msg = MIMEMultipart()
-        msg["From"] = EMAIL_REMETENTE
-        msg["To"] = EMAIL_DESTINATARIO
-        msg["Subject"] = f"⚠️ Alerta de Estoque Baixo: {nome_item}"
+    for destinatario in emails_cadastrados:
+        try:
+            msg = MIMEMultipart()
+            msg["From"] = EMAIL_REMETENTE
+            msg["To"] = destinatario
+            msg["Subject"] = f"⚠️ Alerta de Estoque Baixo: {nome_item}"
 
-        corpo = f"""
+            corpo = f"""
 O item {nome_item} está com o estoque baixo!
 Quantidade atual: {quantidade}
 Limite configurado: {limite}
 """
 
-        msg.attach(MIMEText(corpo, "plain"))
+            msg.attach(MIMEText(corpo, "plain"))
 
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
-            server.login(EMAIL_REMETENTE, SENHA_EMAIL)
-            server.send_message(msg)
+            with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                server.starttls()
+                server.login(EMAIL_REMETENTE, SENHA_EMAIL)
+                server.send_message(msg)
 
-        print(f"[EMAIL ENVIADO] Alerta enviado sobre {nome_item}")
-    except Exception as e:
-        print(f"[ERRO EMAIL] Não foi possível enviar alerta: {e}")
+            print(f"[EMAIL ENVIADO] Alerta enviado para {destinatario}")
+        except Exception as e:
+            print(f"[ERRO EMAIL] Não foi possível enviar para {destinatario}: {e}")
 
 # --- ROTAS ---
 @app.route("/")
 def index():
     return render_template("index.html")
+
+@app.route("/registrar-email", methods=["POST"])
+def registrar_email():
+    email = request.form.get("email")
+    if email and email not in emails_cadastrados:
+        emails_cadastrados.append(email)
+        print(f"[EMAIL REGISTRADO] {email}")
+    return redirect(url_for("index"))
+
+@app.route("/remover-email", methods=["POST"])
+def remover_email():
+    email = request.form.get("email")
+    if email in emails_cadastrados:
+        emails_cadastrados.remove(email)
+        print(f"[EMAIL REMOVIDO] {email}")
+    return redirect(url_for("index"))
 
 @app.route("/itens")
 def itens():
@@ -66,7 +87,6 @@ def adicionar():
     quantidade = int(dados.get("quantidade", 0))
     limite_alerta = int(dados.get("limite_alerta", 0))
 
-    # Verifica duplicidade
     existe = supabase.table("estoque").select("*").eq("item", nome).execute()
     if existe.data:
         return jsonify({"erro": "Item já existe."}), 400
@@ -104,16 +124,15 @@ def atualizar_quantidade():
 
     return jsonify({"mensagem": "Quantidade atualizada"})
 
-#@app.route("/deletar", methods=["POST"])
-#def deletar():
-#    dados = request.get_json()
-#    nome = dados.get("item")
-#
-#    supabase.table("estoque").delete().eq("item", nome).execute()
-#    return jsonify({"mensagem": "Item deletado com sucesso!"})
+# ROTA DELETAR DESATIVADA
+# @app.route("/deletar", methods=["POST"])
+# def deletar():
+#     dados = request.get_json()
+#     nome = dados.get("item")
+#     supabase.table("estoque").delete().eq("item", nome).execute()
+#     return jsonify({"mensagem": "Item deletado com sucesso!"})
 
 if __name__ == "__main__":
-    # Define host com base no ambiente: Docker (production) ou local (development)
     host = "0.0.0.0" if os.getenv("FLASK_ENV") == "production" else "127.0.0.1"
     port = 5000
     debug = False if os.getenv("FLASK_ENV") == "production" else True
