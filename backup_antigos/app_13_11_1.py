@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session
+from flask import Flask, request, jsonify, render_template, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import smtplib
@@ -12,7 +12,6 @@ load_dotenv()
 # --- CONFIGURAÇÕES INICIAIS ---
 app = Flask(__name__)
 CORS(app)
-app.secret_key = os.getenv("SECRET_KEY", "chave-secreta")  # necessária para sessões
 
 # 🔗 Conexão com PostgreSQL
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
@@ -126,23 +125,6 @@ def atualizar_quantidade():
         enviar_email_alerta(item.item, item.quantidade, item.limite_alerta)
 
     return jsonify({"mensagem": "Quantidade atualizada"})
-
-# --- NOVA ROTA PARA ATUALIZAR LIMITE ---
-@app.route("/atualizar_limite", methods=["POST"])
-def atualizar_limite():
-    dados = request.get_json()
-    nome = dados.get("item")
-    novo_limite = int(dados.get("limite_alerta", 0))
-
-    item = Estoque.query.filter_by(item=nome).first()
-    if not item:
-        return jsonify({"erro": "Item não encontrado"}), 404
-
-    item.limite_alerta = novo_limite
-    db.session.commit()
-
-    return jsonify({"mensagem": f"Limite de alerta do item {nome} atualizado para {novo_limite}"})
-
 # --- SEED INICIAL ---
 with app.app_context():
     db.create_all()
@@ -166,6 +148,7 @@ with app.app_context():
             )
             db.session.add(novo)
     db.session.commit()
+
 
 if __name__ == "__main__":
     host = "0.0.0.0" if os.getenv("FLASK_ENV") == "production" else "127.0.0.1"

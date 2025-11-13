@@ -1,23 +1,21 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, request, jsonify, render_template, redirect, url_for
+from supabase import create_client
 from flask_cors import CORS
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 from dotenv import load_dotenv
-
 load_dotenv()
 
 # --- CONFIGURAÇÕES INICIAIS ---
 app = Flask(__name__)
 CORS(app)
-app.secret_key = os.getenv("SECRET_KEY", "chave-secreta")  # necessária para sessões
 
-# 🔗 Conexão com PostgreSQL
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+# 🔐 CONFIGURAÇÃO DO SUPABASE
+url = os.getenv("SUPABASE_URL")
+key = os.getenv("SUPABASE_KEY")
+supabase = create_client(url, key)
 
 # 📧 CONFIGURAÇÃO DO GMAIL
 EMAIL_REMETENTE = os.getenv("EMAIL_REMETENTE")
@@ -25,14 +23,6 @@ SENHA_EMAIL = os.getenv("SENHA_EMAIL")
 
 # Lista de e-mails cadastrados via interface
 emails_cadastrados = []
-
-# --- MODELO DE ESTOQUE ---
-class Estoque(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    item = db.Column(db.String(100), unique=True, nullable=False)
-    quantidade = db.Column(db.Integer, nullable=False, default=0)
-    limite_alerta = db.Column(db.Integer, nullable=True)
-    status = db.Column(db.String(20), default="bom")
 
 # --- FUNÇÃO PARA ENVIAR ALERTA POR EMAIL ---
 def enviar_email_alerta(nome_item, quantidade, limite):
@@ -48,6 +38,7 @@ O item {nome_item} está com o estoque baixo!
 Quantidade atual: {quantidade}
 Limite configurado: {limite}
 """
+
             msg.attach(MIMEText(corpo, "plain"))
 
             with smtplib.SMTP("smtp.gmail.com", 587) as server:
@@ -82,12 +73,12 @@ def remover_email():
 
 @app.route("/itens")
 def itens():
-    dados = Estoque.query.all()
-    resultado = [
-        {"item": i.item, "quantidade": i.quantidade, "limite_alerta": i.limite_alerta, "status": i.status}
-        for i in dados
+    resp = supabase.table("estoque").select("*").execute()
+    dados = [
+        {"item": i["item"], "quantidade": i["quantidade"], "limite_alerta": i.get("limite_alerta")}
+        for i in resp.data
     ]
-    return jsonify(resultado)
+    return jsonify(dados)
 
 @app.route("/adicionar", methods=["POST"])
 def adicionar():
@@ -96,13 +87,16 @@ def adicionar():
     quantidade = int(dados.get("quantidade", 0))
     limite_alerta = int(dados.get("limite_alerta", 0))
 
-    existe = Estoque.query.filter_by(item=nome).first()
-    if existe:
+    existe = supabase.table("estoque").select("*").eq("item", nome).execute()
+    if existe.data:
         return jsonify({"erro": "Item já existe."}), 400
 
-    novo = Estoque(item=nome, quantidade=quantidade, limite_alerta=limite_alerta, status="bom")
-    db.session.add(novo)
-    db.session.commit()
+    supabase.table("estoque").insert({
+        "item": nome,
+        "quantidade": quantidade,
+        "status": "bom",
+        "limite_alerta": limite_alerta
+    }).execute()
 
     if limite_alerta and quantidade <= limite_alerta:
         enviar_email_alerta(nome, quantidade, limite_alerta)
@@ -115,57 +109,28 @@ def atualizar_quantidade():
     nome = dados.get("item")
     delta = int(dados.get("delta", 0))
 
-    item = Estoque.query.filter_by(item=nome).first()
-    if not item:
+    resp = supabase.table("estoque").select("*").eq("item", nome).execute()
+    if not resp.data:
         return jsonify({"erro": "Item não encontrado"}), 404
 
-    item.quantidade += delta
-    db.session.commit()
+    quantidade_atual = resp.data[0]["quantidade"]
+    limite_alerta = resp.data[0].get("limite_alerta", 0)
+    nova_quantidade = quantidade_atual + delta
 
-    if item.limite_alerta and item.quantidade <= item.limite_alerta:
-        enviar_email_alerta(item.item, item.quantidade, item.limite_alerta)
+    supabase.table("estoque").update({"quantidade": nova_quantidade}).eq("item", nome).execute()
+
+    if limite_alerta and nova_quantidade <= limite_alerta:
+        enviar_email_alerta(nome, nova_quantidade, limite_alerta)
 
     return jsonify({"mensagem": "Quantidade atualizada"})
 
-# --- NOVA ROTA PARA ATUALIZAR LIMITE ---
-@app.route("/atualizar_limite", methods=["POST"])
-def atualizar_limite():
-    dados = request.get_json()
-    nome = dados.get("item")
-    novo_limite = int(dados.get("limite_alerta", 0))
-
-    item = Estoque.query.filter_by(item=nome).first()
-    if not item:
-        return jsonify({"erro": "Item não encontrado"}), 404
-
-    item.limite_alerta = novo_limite
-    db.session.commit()
-
-    return jsonify({"mensagem": f"Limite de alerta do item {nome} atualizado para {novo_limite}"})
-
-# --- SEED INICIAL ---
-with app.app_context():
-    db.create_all()
-
-    itens_fixos = [
-        {"item": "carregador", "quantidade": 10, "limite_alerta": 2},
-        {"item": "mouse", "quantidade": 15, "limite_alerta": 3},
-        {"item": "headset", "quantidade": 8, "limite_alerta": 2},
-        {"item": "pilha AA", "quantidade": 20, "limite_alerta": 5},
-        {"item": "pilha AAA", "quantidade": 25, "limite_alerta": 5},
-    ]
-
-    for dados in itens_fixos:
-        existe = Estoque.query.filter_by(item=dados["item"]).first()
-        if not existe:
-            novo = Estoque(
-                item=dados["item"],
-                quantidade=dados["quantidade"],
-                limite_alerta=dados["limite_alerta"],
-                status="bom"
-            )
-            db.session.add(novo)
-    db.session.commit()
+# ROTA DELETAR DESATIVADA
+# @app.route("/deletar", methods=["POST"])
+# def deletar():
+#     dados = request.get_json()
+#     nome = dados.get("item")
+#     supabase.table("estoque").delete().eq("item", nome).execute()
+#     return jsonify({"mensagem": "Item deletado com sucesso!"})
 
 if __name__ == "__main__":
     host = "0.0.0.0" if os.getenv("FLASK_ENV") == "production" else "127.0.0.1"
