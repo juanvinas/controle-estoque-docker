@@ -1,45 +1,67 @@
-# 📦 Controle de Estoque com Flask + Docker + Supabase
+📦 Controle de Estoque com Flask + Docker + Postgres
+Este projeto é uma aplicação web desenvolvida com Flask, empacotada em um contêiner Docker e orquestrada com Docker Compose.
+A persistência dos dados é feita através de um banco de dados PostgreSQL rodando em container próprio, garantindo robustez e persistência local.
+O acesso público é configurado via DuckDNS, permitindo que a aplicação seja acessada externamente por domínio dinâmico.
 
-Este projeto é uma aplicação web desenvolvida com **Flask**, empacotada em um contêiner **Docker** e orquestrada com **Docker Compose**. A persistência dos dados é feita através de um banco de dados **PostgreSQL hospedado no Supabase**, permitindo escalabilidade e integração com serviços modernos.
+🔗 Acesse a aplicação em produção:  
+http://meuprojetoestoque.duckdns.org:8080/
 
-🔗 Acesse a aplicação em produção: [http://meuprojetoestoque.duckdns.org:8080/](http://meuprojetoestoque.duckdns.org:8080/)
+🚀 Tecnologias Utilizadas
+Python 3.10+ — linguagem principal
 
----
+Flask — framework web leve e flexível
 
-## 🚀 Tecnologias Utilizadas
+Docker — empacotamento e isolamento da aplicação
 
-- **Python 3.10+**
-- **Flask** — framework web leve e flexível
-- **Docker** — empacotamento e isolamento da aplicação
-- **Docker Compose** — orquestração de múltiplos serviços
-- **Supabase** — banco de dados PostgreSQL gerenciado na nuvem
-- **DuckDNS** — serviço gratuito de DNS dinâmico para acesso público à aplicação
-- **SMTP** — envio automático de e-mails para alertas de estoque
+Docker Compose — orquestração de múltiplos serviços (Flask + Postgres)
 
----
+PostgreSQL — banco de dados relacional persistente
 
-## 🧰 Funcionalidades
+DuckDNS — DNS dinâmico para acesso público
 
-- Cadastro, edição e exclusão de produtos
-- Controle de estoque com quantidade e movimentações
-- Integração com banco de dados externo via Supabase
-- Interface web simples e responsiva
-- Envio automático de e-mail quando um item atinge o limite mínimo de estoque
-- Pronto para deploy em ambientes cloud ou EC2
+SMTP (Gmail) — envio automático de e-mails para alertas de estoque
 
----
+🧰 Funcionalidades
+Cadastro, edição e exclusão de produtos
 
-## ⚙️ Como executar localmente
+Controle de estoque com movimentações e histórico
 
-### Pré-requisitos
+Persistência dos dados em banco Postgres local
 
-- Docker e Docker Compose instalados
-- Conta no [Supabase](https://supabase.com) com um projeto e banco configurado
+Interface web simples e responsiva
 
-### Passos
+Envio automático de e-mail quando um item atinge o limite mínimo de estoque
 
-1. Clone o repositório:
+Deploy pronto para ambientes locais, servidores cloud ou EC2
 
-```bash
+⚙️ Como executar localmente
+Pré-requisitos
+Docker e Docker Compose instalados
+
+Conta no Gmail com senha de aplicativo configurada (para envio de e-mails)
+
+Passos
+Clone o repositório:
+
+bash
 git clone git@github.com:juanvinas/controle-estoque-docker.git
 cd controle-estoque-docker
+Configure o arquivo .env com suas variáveis:
+
+env
+SECRET_KEY="adminbanco"
+USER_LOGIN="admin"
+USER_PASSWORD="B@ncodedados.2026"
+
+DATABASE_URI=postgresql://estoque_user:estoque_pass@db:5432/estoque_db
+
+EMAIL_REMETENTE=seuemail@gmail.com
+SENHA_EMAIL=sua_senha_de_app
+Suba os containers:
+
+bash
+docker-compose up --build
+Acesse a aplicação:
+
+Código
+http://localhost:8080
