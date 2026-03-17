@@ -1,10 +1,13 @@
+# -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from functools import wraps
 import smtplib
+import logging
+import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,10 +15,17 @@ load_dotenv()
 # --- CONFIGURAÇÕES INICIAIS ---
 app = Flask(__name__)
 CORS(app)
-app.secret_key = os.getenv("SECRET_KEY", "chave-secreta")  # necessária para sessões
+app.secret_key = os.getenv("SECRET_KEY", "chave-secreta-devops-2026")
 
-# 🔗 Conexão com PostgreSQL
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+# --- CONFIGURAÇÃO DE LOGS (AUDITORIA) ---
+logging.basicConfig(
+    filename='estoque_audit.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+# 🔗 Conexão com PostgreSQL Local (usando o host 'db' do compose)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URI")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -23,8 +33,21 @@ db = SQLAlchemy(app)
 EMAIL_REMETENTE = os.getenv("EMAIL_REMETENTE")
 SENHA_EMAIL = os.getenv("SENHA_EMAIL")
 
-# Lista de e-mails cadastrados via interface
+# 🔐 CREDENCIAIS DE ACESSO (Definidas no .env)
+LOGIN_USER = os.getenv("USER_LOGIN", "admin")
+LOGIN_PASSWORD = os.getenv("USER_PASSWORD", "123456")
+
+# Lista na memória (limpa ao reiniciar o container)
 emails_cadastrados = []
+
+# --- DECORATOR PARA PROTEGER ROTAS ---
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "logado" not in session:
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # --- MODELO DE ESTOQUE ---
 class Estoque(db.Model):
@@ -41,46 +64,53 @@ def enviar_email_alerta(nome_item, quantidade, limite):
             msg = MIMEMultipart()
             msg["From"] = EMAIL_REMETENTE
             msg["To"] = destinatario
-            msg["Subject"] = f"⚠️ Alerta de Estoque Baixo: {nome_item}"
+            msg["Subject"] = f"Alerta de Estoque Baixo: {nome_item}"
+            msg.set_charset("utf-8")
 
-            corpo = f"""
-O item {nome_item} está com o estoque baixo!
-Quantidade atual: {quantidade}
-Limite configurado: {limite}
-"""
-            msg.attach(MIMEText(corpo, "plain"))
+            corpo = f"O item {nome_item} está com o estoque baixo!\nQuantidade atual: {quantidade}\nLimite: {limite}"
+            # Normaliza espaços invisíveis
+            corpo = corpo.replace("\xa0", " ")
+
+            msg.attach(MIMEText(corpo, "plain", "utf-8"))
 
             with smtplib.SMTP("smtp.gmail.com", 587) as server:
                 server.starttls()
                 server.login(EMAIL_REMETENTE, SENHA_EMAIL)
                 server.send_message(msg)
 
-            print(f"[EMAIL ENVIADO] Alerta enviado para {destinatario}")
+            logging.info(f"EMAIL: Alerta enviado para {destinatario} sobre o item {nome_item}")
         except Exception as e:
-            print(f"[ERRO EMAIL] Não foi possível enviar para {destinatario}: {e}")
+            logging.error(f"ERRO EMAIL: {e}")
 
-# --- ROTAS ---
+# --- ROTAS DE AUTENTICAÇÃO ---
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        usuario = request.form.get("usuario")
+        senha = request.form.get("senha")
+
+        if usuario == LOGIN_USER and senha == LOGIN_PASSWORD:
+            session["logado"] = True
+            logging.info(f"AUTH: Usuário {usuario} logou com sucesso.")
+            return redirect(url_for("index"))
+
+        logging.warning(f"AUTH: Tentativa de login inválida para o usuário: {usuario}")
+        return render_template("login.html", erro="Usuário ou senha incorretos")
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.pop("logado", None)
+    return redirect(url_for("login"))
+
+# --- ROTAS DE OPERAÇÃO (PROTEGIDAS) ---
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 
-@app.route("/registrar-email", methods=["POST"])
-def registrar_email():
-    email = request.form.get("email")
-    if email and email not in emails_cadastrados:
-        emails_cadastrados.append(email)
-        print(f"[EMAIL REGISTRADO] {email}")
-    return redirect(url_for("index"))
-
-@app.route("/remover-email", methods=["POST"])
-def remover_email():
-    email = request.form.get("email")
-    if email in emails_cadastrados:
-        emails_cadastrados.remove(email)
-        print(f"[EMAIL REMOVIDO] {email}")
-    return redirect(url_for("index"))
-
 @app.route("/itens")
+@login_required
 def itens():
     dados = Estoque.query.all()
     resultado = [
@@ -90,6 +120,7 @@ def itens():
     return jsonify(resultado)
 
 @app.route("/adicionar", methods=["POST"])
+@login_required
 def adicionar():
     dados = request.get_json()
     nome = dados.get("item")
@@ -104,12 +135,15 @@ def adicionar():
     db.session.add(novo)
     db.session.commit()
 
+    logging.info(f"ESTOQUE: Item '{nome}' adicionado com {quantidade} unidades.")
+
     if limite_alerta and quantidade <= limite_alerta:
         enviar_email_alerta(nome, quantidade, limite_alerta)
 
     return jsonify({"mensagem": "Item adicionado com sucesso!"})
 
 @app.route("/atualizar_quantidade", methods=["POST"])
+@login_required
 def atualizar_quantidade():
     dados = request.get_json()
     nome = dados.get("item")
@@ -122,53 +156,46 @@ def atualizar_quantidade():
     item.quantidade += delta
     db.session.commit()
 
+    logging.info(f"ESTOQUE: Quantidade de '{nome}' alterada em {delta}. Total: {item.quantidade}")
+
     if item.limite_alerta and item.quantidade <= item.limite_alerta:
         enviar_email_alerta(item.item, item.quantidade, item.limite_alerta)
 
     return jsonify({"mensagem": "Quantidade atualizada"})
 
-# --- NOVA ROTA PARA ATUALIZAR LIMITE ---
-@app.route("/atualizar_limite", methods=["POST"])
-def atualizar_limite():
-    dados = request.get_json()
-    nome = dados.get("item")
-    novo_limite = int(dados.get("limite_alerta", 0))
+# --- ROTAS DE CONFIGURAÇÃO DE E-MAIL ---
+@app.route("/registrar-email", methods=["POST"])
+@login_required
+def registrar_email():
+    email = request.form.get("email")
+    if email and email not in emails_cadastrados:
+        emails_cadastrados.append(email.strip())
+        logging.info(f"CONFIG: E-mail {email} cadastrado para alertas.")
+    return redirect(url_for("index"))
 
-    item = Estoque.query.filter_by(item=nome).first()
-    if not item:
-        return jsonify({"erro": "Item não encontrado"}), 404
+@app.route("/remover-email", methods=["POST"])
+@login_required
+def remover_email():
+    email = request.form.get("email")
+    if email in emails_cadastrados:
+        emails_cadastrados.remove(email)
+        logging.info(f"CONFIG: E-mail {email} removido dos alertas.")
+    return redirect(url_for("index"))
 
-    item.limite_alerta = novo_limite
-    db.session.commit()
-
-    return jsonify({"mensagem": f"Limite de alerta do item {nome} atualizado para {novo_limite}"})
-
-# --- SEED INICIAL ---
+# --- SEED E INICIALIZAÇÃO ---
 with app.app_context():
     db.create_all()
-
-    itens_fixos = [
-        {"item": "carregador", "quantidade": 10, "limite_alerta": 2},
-        {"item": "mouse", "quantidade": 15, "limite_alerta": 3},
-        {"item": "headset", "quantidade": 8, "limite_alerta": 2},
-        {"item": "pilha AA", "quantidade": 20, "limite_alerta": 5},
-        {"item": "pilha AAA", "quantidade": 25, "limite_alerta": 5},
-    ]
-
-    for dados in itens_fixos:
-        existe = Estoque.query.filter_by(item=dados["item"]).first()
-        if not existe:
-            novo = Estoque(
-                item=dados["item"],
-                quantidade=dados["quantidade"],
-                limite_alerta=dados["limite_alerta"],
-                status="bom"
-            )
-            db.session.add(novo)
-    db.session.commit()
+    if not Estoque.query.first():
+        itens_fixos = [
+            {"item": "carregador", "quantidade": 10, "limite_alerta": 2},
+            {"item": "mouse", "quantidade": 15, "limite_alerta": 3},
+            {"item": "headset", "quantidade": 8, "limite_alerta": 2},
+            {"item": "pilha AA", "quantidade": 20, "limite_alerta": 5},
+            {"item": "pilha AAA", "quantidade": 25, "limite_alerta": 5},
+        ]
+        for d in itens_fixos:
+            db.session.add(Estoque(item=d["item"], quantidade=d["quantidade"], limite_alerta=d["limite_alerta"]))
+        db.session.commit()
 
 if __name__ == "__main__":
-    host = "0.0.0.0" if os.getenv("FLASK_ENV") == "production" else "127.0.0.1"
-    port = 5000
-    debug = False if os.getenv("FLASK_ENV") == "production" else True
-    app.run(host=host, port=port, debug=debug)
+    app.run(host="0.0.0.0", port=5000)
