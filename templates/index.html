@@ -1,161 +1,97 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <title>Controle de Estoque</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 40px;
-            background-color: #f9f9f9;
-        }
-
-        h1 {
-            color: #333;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-
-        form {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        input[type="email"] {
-            padding: 8px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-            width: 250px;
-        }
-
-        button[type="submit"] {
-            padding: 8px 12px;
-            border-radius: 5px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-
-        table {
-            width: 80%;
-            margin: 30px auto;
-            border-collapse: collapse;
-            background-color: white;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        th {
-            background-color: #007bff;
-            color: white;
-            padding: 12px;
-            text-align: center;
-        }
-
-        td {
-            padding: 10px;
-            text-align: center;
-            border-bottom: 1px solid #ddd;
-        }
-
-        tr.alerta {
-            background-color: #fff3cd;
-        }
-
-        button {
-            border: none;
-            padding: 6px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            margin: 0 2px;
-        }
-
-        .btn-add {
-            background-color: #28a745;
-            color: white;
-        }
-
-        .btn-remove {
-            background-color: #dc3545;
-            color: white;
-        }
-
-        .btn-add:hover { background-color: #218838; }
-        .btn-remove:hover { background-color: #c82333; }
-    </style>
-</head>
-<body>
-    <h1>📦 Controle de Estoque</h1>
-<div style="text-align: right; margin-bottom: 10px;">
-    <a href="/logout" style="color: #dc3545; text-decoration: none; font-weight: bold;">[SAIR]</a>
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Painel de Inventário</h2>
 </div>
-    <form method="POST" action="/registrar-email">
-        <label for="email">Cadastrar e-mail para alertas:</label>
-        <input type="email" name="email" required placeholder="seu@email.com">
-        <button type="submit">Cadastrar</button>
-    </form>
 
-    <form method="POST" action="/remover-email">
-        <label for="email">Remover e-mail dos alertas:</label>
-        <input type="email" name="email" required placeholder="seu@email.com">
-        <button type="submit">Remover</button>
-    </form>
-
-    <table>
-        <thead>
+<div class="table-responsive shadow-sm rounded mb-5">
+    <table class="table table-hover align-middle bg-white">
+        <thead class="table-dark">
             <tr>
                 <th>Item</th>
-                <th>Quantidade</th>
-                <th>Limite de Alerta</th>
-                <th>Ações</th>
+                <th>Qtd Atual</th>
+                <th>Mínimo</th>
+                <th class="text-center">Ações</th>
             </tr>
         </thead>
-        <tbody id="tabela-itens"></tbody>
+        <tbody>
+            {% for produto in produtos %}
+            <tr class="{% if produto.quantidade <= produto.limite_alerta %}table-danger{% endif %}">
+                <td class="fw-bold">{{ produto.item }}</td>
+                <td>
+                    <span class="badge {% if produto.quantidade <= produto.limite_alerta %}bg-danger{% else %}bg-success{% endif %}">
+                        {{ produto.quantidade }}
+                    </span>
+                </td>
+                <td>{{ produto.limite_alerta }}</td>
+                <td class="text-center">
+                    {% if current_user.is_authenticated %}
+                        <div class="d-flex justify-content-center gap-1">
+                            <form action="{{ url_for('atualizar_item', id=produto.id, acao='menos') }}" method="POST">
+                                <button class="btn btn-sm btn-secondary">-</button>
+                            </form>
+                            <form action="{{ url_for('atualizar_item', id=produto.id, acao='mais') }}" method="POST">
+                                <button class="btn btn-sm btn-primary">+</button>
+                            </form>
+                            <form action="{{ url_for('remover_item', id=produto.id) }}" method="POST" onsubmit="return confirm('Excluir este item?')">
+                                <button class="btn btn-sm btn-danger">🗑️</button>
+                            </form>
+                        </div>
+                    {% else %}
+                        <small class="text-muted">Somente leitura</small>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
     </table>
+</div>
 
-    <script>
-        async function carregarItens() {
-            try {
-                const response = await fetch('/itens');
-                const itens = await response.json();
+{% if current_user.is_authenticated %}
+<div class="row g-4">
+    <div class="col-md-7">
+        <div class="card h-100 shadow-sm p-4">
+            <h4>📦 Novo Item</h4>
+            <form action="{{ url_for('adicionar_item') }}" method="POST" class="row g-3 mt-2">
+                <div class="col-md-6">
+                    <input type="text" name="item" class="form-control" placeholder="Nome do item" required>
+                </div>
+                <div class="col-md-3">
+                    <input type="number" name="quantidade" class="form-control" placeholder="Qtd" required>
+                </div>
+                <div class="col-md-3">
+                    <input type="number" name="limite" class="form-control" placeholder="Mín" required>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-success w-100">Cadastrar no Estoque</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
-                const tabela = document.getElementById('tabela-itens');
-                tabela.innerHTML = '';
-
-                itens.forEach(item => {
-                    const linha = document.createElement('tr');
-                    if (item.quantidade <= item.limite_alerta) linha.classList.add('alerta');
-
-                    linha.innerHTML = `
-                        <td>${item.item}</td>
-                        <td>${item.quantidade}</td>
-                        <td>${item.limite_alerta}</td>
-                        <td>
-                            <button class="btn-remove" onclick="atualizarQuantidade('${item.item}', -1)">−</button>
-                            <button class="btn-add" onclick="atualizarQuantidade('${item.item}', 1)">+</button>
-                        </td>
-                    `;
-                    tabela.appendChild(linha);
-                });
-            } catch (error) {
-                console.error("Erro ao carregar itens:", error);
-            }
-        }
-
-        async function atualizarQuantidade(nome, delta) {
-            await fetch('/atualizar_quantidade', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ item: nome, delta })
-            });
-            alert(`Quantidade de "${nome}" atualizada.`);
-            carregarItens();
-        }
-
-        window.onload = carregarItens;
-    </script>
-</body>
-</html>
+    <div class="col-md-5">
+        <div class="card h-100 shadow-sm p-4">
+            <h4>📧 Alertas de E-mail</h4>
+            <ul class="list-group list-group-flush mb-3 mt-2">
+                {% for e in emails %}
+                <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                    {{ e.email }}
+                    <form action="{{ url_for('remover_email', id=e.id) }}" method="POST">
+                        <button class="btn btn-link text-danger p-0">Remover</button>
+                    </form>
+                </li>
+                {% else %}
+                <li class="list-group-item text-muted px-0 italic">Nenhum e-mail cadastrado.</li>
+                {% endfor %}
+            </ul>
+            <form action="{{ url_for('cadastrar_email') }}" method="POST" class="mt-auto">
+                <div class="input-group">
+                    <input type="email" name="email" class="form-control" placeholder="email@ti.com" required>
+                    <button type="submit" class="btn btn-primary">Adicionar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
