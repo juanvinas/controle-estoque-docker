@@ -1,29 +1,53 @@
 
 
 services:
-  estoque-app:
-    build: .
-    container_name: estoque_flask
-    ports:
-      - "8080:5000"   # roda no host 8080, dentro do container 5000
-    env_file:
-      - .env
-    restart: always
-    depends_on:
-      - db
-
   db:
     image: postgres:15
     container_name: estoque_postgres
     restart: always
-    environment:
-      POSTGRES_USER: estoque_user
-      POSTGRES_PASSWORD: estoque_pass
-      POSTGRES_DB: estoque_db
+    env_file:
+      - .env
     volumes:
       - db_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
 
+  app:
+    build: .
+    container_name: estoque_flask
+    restart: always
+    env_file:
+      - .env
+    expose:
+      - "5000"
+    depends_on:
+      - db
+
+  nginx:
+    image: nginx:latest
+    container_name: estoque_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # monta o arquivo principal do Nginx
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # monta o arquivo de configuração do site
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # monta os certificados gerados pelo certbot
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - app
+
+  certbot:
+    image: certbot/certbot
+    container_name: estoque_certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
 volumes:
-  db_data: 
+  db_data:
