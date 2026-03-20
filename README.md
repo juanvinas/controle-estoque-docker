@@ -28,7 +28,7 @@ Este projeto foi otimizado para o conceito de **"Zero Configuration"**. Basta te
 
 ### 1. Pré-requisitos
 Certifique-se de ter o Docker e o Docker Compose instalados:
-```bash
+bash
 sudo apt update && sudo apt install docker.io docker-compose -y
 ### 2. Clonar o Repositório
 Bash
