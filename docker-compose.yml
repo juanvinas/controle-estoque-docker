@@ -13,7 +13,7 @@ services:
       - "5432:5432"
 
   app:
-    build: .
+    image: jpablonunes/contro-estoque-1:latest
     container_name: estoque_flask
     restart: always
     env_file:
