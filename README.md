@@ -5,7 +5,7 @@ A persistência dos dados é feita através de um banco de dados **PostgreSQL** 
 O acesso público é configurado via **DuckDNS**, permitindo que a aplicação seja acessada externamente por domínio dinâmico.
 
 🔗 **Acesse a aplicação em produção:**  
-[http://meuprojetoestoque.duckdns.org:8080/](http://meuprojetoestoque.duckdns.org:8080/)
+[https://meuprojetoestoque.duckdns.org/]
 
 ---
 
