@@ -43,7 +43,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}     # Sua chave id_ed25519 gerada no usuário ubuntu
           script: |
             # Entra na pasta do projeto na sua VM
-            cd /home/ubuntu/controle-estoque-docker
+            cd /home/ubuntu/projeto/controle-estoque-docker
             
             # Puxa a nova imagem que o job de build acabou de subir
             sudo docker compose pull
