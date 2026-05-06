@@ -1,14 +1,16 @@
-name: Docker Hub Push
+name: Docker Hub Push and Deploy
 
 on:
   push:
     branches: [ "main" ]
 
+# Força o uso do Node.js 24 para evitar avisos de depreciação
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
 
 jobs:
   build-and-push:
+    name: CI - Build and Push to Docker Hub
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -25,4 +27,29 @@ jobs:
         with:
           context: .
           push: true
+          # Note que estou usando a tag 'latest' para facilitar o pull na VM
           tags: jpablonunes/contro-estoque-1:latest
+
+  deploy:
+    name: CD - Deploy to Oracle VM
+    needs: build-and-push # Só inicia se o build acima for concluído com sucesso
+    runs-on: ubuntu-latest
+    steps:
+      - name: Executar comandos na VM via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }} # Aqui deve ser 'ubuntu'
+          key: ${{ secrets.SSH_KEY }}     # Sua chave id_ed25519 gerada no usuário ubuntu
+          script: |
+            # Entra na pasta do projeto na sua VM
+            cd /home/ubuntu/controle-estoque-docker
+            
+            # Puxa a nova imagem que o job de build acabou de subir
+            sudo docker compose pull
+            
+            # Reinicia os containers para aplicar a nova imagem
+            sudo docker compose up -d
+            
+            # Remove imagens antigas e sem uso para economizar espaço em disco
+            sudo docker image prune -f
